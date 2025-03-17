@@ -5,8 +5,10 @@ import pyttsx3
 import speech_recognition as sr
 from docx import Document
 import re
+import pandas as pd
 
 document_text = ""
+api_text = ""  # Variable para almacenar la respuesta de la API
 enable_tts = False  # Variable global para controlar TTS
 
 def speech_to_text():
@@ -33,21 +35,72 @@ def speech_to_text():
 def text_to_speech(text):
     global enable_tts
     if not enable_tts:
-        return  # Evita la conversión si el usuario la desactivó
+        return  
 
     engine = pyttsx3.init()
     clean_text = re.sub(r'[*_`~]', '', text)
     engine.say(clean_text)
     engine.runAndWait()
 
+
+def obtener_datos_api(url):
+    global api_text
+    try:
+        response = requests.get(url)
+        print(f"📡 API solicitada: {url}")
+        print(f"📡 Código de respuesta: {response.status_code}")
+
+        if response.status_code == 200:
+            api_data = response.json()
+            #print(f"📡 Respuesta API (cruda): {json.dumps(api_data, indent=2)}")  # Imprime el JSON completo
+
+            if "result" in api_data and "records" in api_data["result"]:
+                records = api_data["result"]["records"]
+                
+                df = pd.DataFrame(records)
+
+                 # Convertir la columna "Fecha" a datetime
+                df["Fecha"] = pd.to_datetime(df["Fecha"])
+                
+                # Pivotear la tabla: "CodigoVariable" serán las columnas, "Valor" el contenido
+                df_pivot = df.pivot(index="Fecha", columns="CodigoVariable", values="Valor").reset_index()
+
+                # Cambiar el formato de la fecha a "DD-MM-YYYY"
+                df_pivot["Fecha"] = df_pivot["Fecha"].dt.strftime("%d-%m-%Y")
+                # Convertir el DataFrame a texto legible
+                pivot_text = df_pivot.to_string()
+
+                name = api_data["result"].get("name", "Sin nombre")
+                description = api_data["result"].get("metadata", {}).get("description", "Sin descripción")
+
+                api_text = (
+                    f"🔹 **{name}**\n"
+                    f"📄 {description}\n\n"
+                    f"🌐 **Información cargada desde la API:** {url}\n\n"
+                    f"📊 **Datos Pivotados:**\n```\n{pivot_text}\n```"
+                )
+
+                print(f"✅ API cargada: {api_text}")
+                return [{"role": "assistant", "content": "📄 API cargada exitosamente. ¿Qué desea preguntar?"}]
+            else:
+                print("❌ Error: No se encontraron registros en la API.")
+                return [{"role": "assistant", "content": "❌ Error: No se encontraron registros en la API."}]
+        else:
+            print(f"❌ Error en la API: {response.status_code}")
+            return [{"role": "assistant", "content": f"❌ Error en la API: {response.status_code}"}]
+    except Exception as e:
+        print(f"❌ Error al conectar con la API: {str(e)}")
+        return [{"role": "assistant", "content": f"❌ Error al conectar con la API: {str(e)}"}]
+    
+    
 def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled):
-    global document_text, enable_tts
-    enable_tts = tts_enabled  # Actualiza el estado de TTS
+    global document_text, enable_tts, api_text
+    enable_tts = tts_enabled  
     
     if not prompt.strip():
-        return [["", "Documento subido correctamente. ¿Qué desea preguntar?"]]
+        return [{"role": "assistant", "content": "Documento subido correctamente. ¿Qué desea preguntar?"}]
     
-    full_prompt = f"{document_text}\n\nUsuario: {prompt}" if document_text else prompt
+    full_prompt = f"{document_text}\n\n{api_text}\n\nUsuario: {prompt}" if document_text or api_text else prompt
     url = "http://127.0.0.1:11434/api/chat"
     headers = {"Content-Type": "application/json"}
     data = {
@@ -65,15 +118,15 @@ def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled)
         response_data = response.json()
         assistant_message = response_data['message']['content']
         text_to_speech(assistant_message)
-        return [[prompt, assistant_message]]
+        return [{"role": "user", "content": prompt}, {"role": "assistant", "content": assistant_message}]
     else:
-        return [[prompt, f"Error: {response.status_code}, {response.text}"]]
+        return [{"role": "user", "content": prompt}, {"role": "assistant", "content": f"Error: {response.status_code}, {response.text}"}]
 
 def cargar_documento(archivo):
     global document_text
     doc = Document(archivo.name)
     document_text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-    return [["", "📄 Documento cargado exitosamente. ¿Qué desea preguntar?"]]
+    return [{"role": "assistant", "content": "📄 Documento cargado exitosamente. ¿Qué desea preguntar?"}]
 
 def crear_interfaz():
     with gr.Blocks(css=""" 
@@ -88,8 +141,8 @@ def crear_interfaz():
 
         with gr.Row():
             with gr.Column(scale=3):
-                gr.Markdown("# 🌟 Chat con Ollama 3.2 con Voz y Texto")
-                chatbot = gr.Chatbot(label="🤖 Chatbot")        
+                gr.Markdown("# 🌟 Asistente mercado de energía Mayorista")
+                chatbot = gr.Chatbot(label="🤖 Chatbot", type="messages")        
                 with gr.Row():
                     prompt_input = gr.Textbox(label="💬 Escribe tu mensaje", placeholder="Escribe algo...", lines=2, scale=8)
                     voice_input_btn = gr.Button("🎙 Hablar", scale=2)       
@@ -103,9 +156,9 @@ def crear_interfaz():
                     temperatura_slider = gr.Slider(minimum=0, maximum=2, step=0.01, value=0.5, label="🔥 Temperatura")
                     max_tokens_slider = gr.Slider(minimum=20, maximum=200, step=10, value=50, label="📏 Tokens máximos")
                 
-                # 🔊 Checkbox para activar/desactivar Text-to-Speech
                 tts_checkbox = gr.Checkbox(label="🗣 Activar TTS (Text-to-Speech)", value=False)
                 file_upload = gr.File(label="📂 Subir documento .docx", type="filepath")
+                api_input = gr.Textbox(label="🌐 URL de API (Opcional)", placeholder="Introduce una API para el chat")
 
         sidebar_state = gr.State(False)
 
@@ -117,6 +170,7 @@ def crear_interfaz():
 
         voice_input_btn.click(speech_to_text, inputs=[], outputs=prompt_input, show_progress=True)
         file_upload.change(cargar_documento, inputs=[file_upload], outputs=chatbot)
+        api_input.change(obtener_datos_api,inputs=[api_input],outputs=chatbot)
         
         submit_btn.click(chat_with_ollama, 
                          inputs=[prompt_input, top_k_slider, top_p_slider, temperatura_slider, max_tokens_slider, tts_checkbox], 
