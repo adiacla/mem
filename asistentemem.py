@@ -65,8 +65,12 @@ def obtener_datos_api(url):
                 # Pivotear la tabla: "CodigoVariable" serán las columnas, "Valor" el contenido
                 df_pivot = df.pivot(index="Fecha", columns="CodigoVariable", values="Valor").reset_index()
 
-                # Cambiar el formato de la fecha a "DD-MM-YYYY"
+                 # Cambiar el formato de la fecha a "DD-MM-YYYY"
                 df_pivot["Fecha"] = df_pivot["Fecha"].dt.strftime("%d-%m-%Y")
+                
+                df_pivot.index.name = "index"
+
+
                 # Convertir el DataFrame a texto legible
                 pivot_text = df_pivot.to_string()
 
@@ -77,7 +81,7 @@ def obtener_datos_api(url):
                     f"🔹 **{name}**\n"
                     f"📄 {description}\n\n"
                     f"🌐 **Información cargada desde la API:** {url}\n\n"
-                    f"📊 **Datos Pivotados:**\n```\n{pivot_text}\n```"
+                    f"📊 **Conjuntos de dato del API:**\n```\n{pivot_text}\n```"
                 )
 
                 print(f"✅ API cargada: {api_text}")
@@ -141,7 +145,8 @@ def crear_interfaz():
 
         with gr.Row():
             with gr.Column(scale=3):
-                gr.Markdown("# 🌟 Asistente mercado de energía Mayorista")
+                gr.Image("logo.jpg", label="", height=40, width=40, show_label=False,show_download_button=False, interactive=False)
+                gr.Markdown("# Asistente mercado de energía Mayorista")
                 chatbot = gr.Chatbot(label="🤖 Chatbot", type="messages")        
                 with gr.Row():
                     prompt_input = gr.Textbox(label="💬 Escribe tu mensaje", placeholder="Escribe algo...", lines=2, scale=8)
@@ -158,6 +163,7 @@ def crear_interfaz():
                 
                 tts_checkbox = gr.Checkbox(label="🗣 Activar TTS (Text-to-Speech)", value=False)
                 file_upload = gr.File(label="📂 Subir documento .docx", type="filepath")
+                gr.Markdown("# 🌟 La Columna no puede superar dos años de consulta")
                 api_input = gr.Textbox(label="🌐 URL de API (Opcional)", placeholder="Introduce una API para el chat")
 
         sidebar_state = gr.State(False)
