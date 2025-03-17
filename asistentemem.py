@@ -1,11 +1,12 @@
-import gradio as gr
-import requests
-import json
-import pyttsx3
-import speech_recognition as sr
-from docx import Document
+import gradio as gr  #pip install gradio
+import requests #pip install requests
+import json #pip install pypi-json
+import pyttsx3  #pip install pyttsx3
+import speech_recognition as sr  #pip install SpeechRecognition
+from docx import Document #pip install python-docx
 import re
 import pandas as pd
+#pip install pyaudio
 
 document_text = ""
 api_text = ""  # Variable para almacenar la respuesta de la API
@@ -38,7 +39,7 @@ def text_to_speech(text):
         return  
 
     engine = pyttsx3.init()
-    clean_text = re.sub(r'[*_`~]', '', text)
+    clean_text = re.sub(r'[*_`~-]', '', text)
     engine.say(clean_text)
     engine.runAndWait()
 
