@@ -244,12 +244,18 @@ def crear_interfaz():
                         lines=2,
                         scale=8,
                     )
-                    voice_input_btn = gr.Button("🎙 Hablar", scale=2)
+                    voice_input_btn = gr.Button("🎙 Micrófono", scale=2)
                 submit_btn = gr.Button("🚀 Enviar")
 
             with gr.Column(scale=1, visible=False) as sidebar:
                 gr.Markdown("📢 **Ajustes del Modelo**")
                 with gr.Accordion("⚙️ Configuración Avanzada", open=False):
+                    gr.Markdown("""
+                    *Ajustes que controlan el comportamiento del modelo:*
+                    - **Top K/P**: Controla la diversidad de palabras. Valores bajos = respuestas más directas
+                    - **Temperatura**: Alta = más creatividad, Baja = más precisión
+                    - **Tokens máximos**: Controla la longitud de la respuesta
+                    """)
                     top_k_slider = gr.Slider(
                         minimum=1, maximum=50, step=1, value=20, label="🔍 Top K"
                     )
@@ -277,7 +283,7 @@ def crear_interfaz():
                     elem_id="tts-checkbox",
                 )
                 file_upload = gr.File(label="📂 Subir documento .docx", type="filepath")
-                gr.Markdown("# 🌟 La Columna no puede superar dos años de consulta")
+                gr.Markdown("### 🌟 La Columna no puede superar dos años de consulta")
                 api_input = gr.Textbox(
                     label="🌐 URL de API (Opcional)",
                     placeholder="Introduce una API para el chat",
