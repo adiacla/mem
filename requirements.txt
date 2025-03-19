@@ -1,6 +1,6 @@
 ﻿tensorflow==2.18.0
 gradio
-PyAudio
+python3-pyaudio
 python-docx
 SpeechRecognition
 scikit-learn
