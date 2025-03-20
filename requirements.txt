@@ -1,0 +1,17 @@
+tensorflow==2.18.0
+gradio
+python-docx
+SpeechRecognition
+scikit-learn
+streamlit
+pandas
+matplotlib
+plotly
+workalendar
+pydataxm
+pyttsx3
+PyAudio
+
+accelerate
+torch
+transformers
