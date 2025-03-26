@@ -10,8 +10,16 @@ api_text = ""
 def cargar_documento(archivo):
     """Load and process a .docx document"""
     global document_text
-    doc = Document(archivo.name)
-    document_text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+    print(f"[DEBUG] Starting document load: {archivo.name}")
+    try:
+        doc = Document(archivo.name)
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip() != ""]
+        print(f"[DEBUG] Loaded paragraphs: {paragraphs}")
+        document_text = "\n".join(paragraphs)
+        print(f"[DEBUG] Final document text length: {len(document_text)}")
+    except Exception as e:
+        print(f"[ERROR] Failed to load document: {str(e)}")
+        document_text = ""
     return [
         {
             "role": "assistant",
