@@ -150,6 +150,10 @@ def crear_interfaz():
                 tts_checkbox,
             ],
             outputs=[chatbot, audio_output],
+        ).then(
+            lambda: "",  # Clear the input box after sending
+            inputs=[],
+            outputs=[prompt_input]
         )
 
         # Add an event handler to update the global tts_enabled variable

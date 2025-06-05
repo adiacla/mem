@@ -13,10 +13,40 @@ def cargar_documento(archivo):
     print(f"[DEBUG] Starting document load: {archivo.name}")
     try:
         doc = Document(archivo.name)
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-        print(f"[DEBUG] Loaded paragraphs: {paragraphs}")
-        document_text = "\n".join(paragraphs)
+        print(f"[DEBUG] Total paragraphs found by python-docx: {len(doc.paragraphs)}")
+        
+        all_text_parts = []
+        seen_text_parts = set() # Use a set for efficient "in" checks
+
+        # Log text of first few raw paragraphs for inspection
+        for i, p in enumerate(doc.paragraphs):
+            stripped_p_text = p.text.strip()
+            if i < 5:  # Log first 5 paragraphs as an example
+                print(f"[DEBUG] Raw paragraph {i} text (stripped length): {len(stripped_p_text)}, text (first 50 chars, stripped): '{stripped_p_text[:50]}'")
+            if stripped_p_text and stripped_p_text not in seen_text_parts:
+                all_text_parts.append(stripped_p_text)
+                seen_text_parts.add(stripped_p_text)
+        
+        print(f"[DEBUG] Total tables found: {len(doc.tables)}")
+        for i, table in enumerate(doc.tables):
+            print(f"[DEBUG] Processing table {i}")
+            for row_idx, row in enumerate(table.rows):
+                for cell_idx, cell in enumerate(row.cells):
+                    cell_text = cell.text.strip()
+                    if cell_text and cell_text not in seen_text_parts:
+                        # Log first few unique cell texts for inspection
+                        # Simplified logging condition to show a few unique cells added
+                        if len(all_text_parts) < 20: # Example: log until 20 unique parts are collected or so
+                             print(f"[DEBUG] Adding unique cell text: Table {i}, Row {row_idx}, Cell {cell_idx} (stripped length): {len(cell_text)}, text (first 50 chars): '{cell_text[:50]}'")
+                        all_text_parts.append(cell_text)
+                        seen_text_parts.add(cell_text)
+        
+        print(f"[DEBUG] Total unique text parts extracted (paragraphs + table cells): {len(all_text_parts)}")
+        document_text = "\n\n".join(all_text_parts) # Join with double newline to separate content from different elements
         print(f"[DEBUG] Final document text length: {len(document_text)}")
+        if not document_text:
+            print("[WARNING] Document text is empty after processing paragraphs and tables.")
+            
     except Exception as e:
         print(f"[ERROR] Failed to load document: {str(e)}")
         document_text = ""

@@ -1,16 +1,20 @@
 import torch
+import requests  # added for Ollama API call
+import json
 from transformers import (
     pipeline,
     BitsAndBytesConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
 )
-#from huggingface_hub import login   LOGIN SOLO PARA DESCARGAR EL MODELO
+from huggingface_hub import login
 import gc
 from asistentemem.speech import generate_tts_audio
 from asistentemem.data import get_document_text, get_api_text
 
-enable_tts = False
+# Global variable for API selection: if True, use Ollama API; if False, use Hugging Face transformers.
+USE_OLLAMA_API = False
+
 # Global variables to store the model, tokenizer, and pipeline
 model = None
 tokenizer = None
@@ -24,7 +28,8 @@ def initialize_model():
     if pipe is not None:
         return  # Model already initialized
 
-    # login(token="")  LOGIN SOLO PARA DESCARGAR EL MODELO
+    # print("[DEBUG] Logging into Hugging Face")
+    # login(token="")  # Add your token here
 
     # Model ID
     model_id = "meta-llama/Llama-3.2-3B-Instruct"
@@ -37,12 +42,10 @@ def initialize_model():
         bnb_4bit_quant_type="nf4",
     )
 
-    # Load model with quantization config
-    print("Loading Llama 3.2 model with 4-bit quantization...")
-
+    print("[DEBUG] Loading model with quantization config...")
     # Check if CUDA is available
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    print(f"[DEBUG] Using device: {device}")
 
     # Load model and tokenizer separately with quantization
     model = AutoModelForCausalLM.from_pretrained(
@@ -60,14 +63,14 @@ def initialize_model():
         model=model,
         tokenizer=tokenizer,
     )
-    print("Model loaded successfully")
+    print("[DEBUG] Model loaded successfully")
 
 
-def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled):
-    """Get response from Llama 3.2 model instead of Ollama"""
-    global enable_tts, pipe
-    enable_tts = tts_enabled
+def chat_with_huggingface(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled):
+    """Get response using Hugging Face transformers pipeline"""
+    global pipe
 
+    print(f"[DEBUG] Chatting with Hugging Face: prompt='{prompt}'")
     if not prompt.strip():
         return [
             {
@@ -82,8 +85,11 @@ def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled)
 
     document_text = get_document_text()
     api_text = get_api_text()
+    print(
+        f"[DEBUG] Document text length: {len(document_text)}; API text length: {len(api_text)}"
+    )
 
-    # Create messages format for llama model
+    # Create messages format for the model
     messages = []
 
     # Add context if available
@@ -106,6 +112,7 @@ def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled)
             temperature=temperatura,
             do_sample=True,
         )
+        print(f"[DEBUG] Raw model output: {outputs}")
 
         assistant_message = outputs[0]["generated_text"][-1]["content"]
 
@@ -118,11 +125,94 @@ def chat_with_ollama(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled)
         ], audio_path
     except Exception as e:
         error_message = f"Error generating response: {str(e)}"
-        print(error_message)
+        print(f"[ERROR] {error_message}")
         return [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": error_message},
         ], None
+
+
+def chat_with_ollama_api(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled):
+    """Get response using the Ollama API call"""
+    api_url = "http://localhost:11434/api/chat"
+
+    document_text = get_document_text()
+    api_text = get_api_text()
+
+    # Prepare context string
+    context_parts = []
+    if document_text:
+        context_parts.append(f"--- Contenido del Documento ---\n{document_text}")
+    if api_text:
+        context_parts.append(f"--- Datos de la API ---\n{api_text}")
+    
+    full_context_str = "\n\n".join(context_parts)
+
+    # Construct the user message with integrated context in Spanish
+    if full_context_str:
+        user_content = f"Por favor, responde la siguiente pregunta. Considera el siguiente contexto, ya que podría ser útil:\n\n--- Contexto Proporcionado ---\n{full_context_str}\n\n--- Pregunta del Usuario ---\n{prompt}"
+        system_message_content = "Eres un asistente útil. Analiza el contexto proporcionado, ya que podría ser relevante para responder la pregunta del usuario. Tu respuesta probablemente debería verse afectada por este contexto. Si la respuesta no se encuentra en el contexto, indica que la información no está disponible en los materiales proporcionados."
+    else:
+        user_content = prompt # No context to provide
+        system_message_content = "Eres un asistente útil."
+
+
+    payload = {
+        "model": "llama3.2:3b-instruct-q6_K", # Ensure this model name is correct for your Ollama setup
+        "messages": [
+            {"role": "system", "content": system_message_content},
+            {"role": "user", "content": user_content}
+        ],
+        "options": {
+            "temperature": temperatura,
+            "top_k": top_k,
+            "top_p": top_p,
+            "num_predict": max_tokens,
+        },
+        "stream": False,
+    }
+
+    print(f"[DEBUG] Sending payload to Ollama API: {json.dumps(payload, indent=2, ensure_ascii=False)}")
+    try:
+        response = requests.post(api_url, json=payload)
+        print(f"[DEBUG] Ollama API response status: {response.status_code}")
+        if response.ok:
+            try:
+                result = response.json()
+            except ValueError as json_err:
+                result = json.loads(response.text.splitlines()[0])
+            print(f"[DEBUG] Raw Ollama API result: {json.dumps(result, indent=2)}")
+            assistant_message = result.get("message", {}).get(
+                "content", "No response content in API result"
+            )
+            print(
+                f"[DEBUG] Extracted assistant message: '{assistant_message}' (length: {len(assistant_message)})"
+            )
+        else:
+            assistant_message = f"❌ Error en API Ollama: {response.status_code}"
+            print(f"[ERROR] {assistant_message}")
+    except Exception as e:
+        assistant_message = f"❌ Error al conectar con API Ollama: {str(e)}"
+        print(f"[ERROR] {assistant_message}")
+
+    audio_path = generate_tts_audio(assistant_message) if tts_enabled else None
+    return [
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": assistant_message},
+    ], audio_path
+
+
+def chat(prompt, top_k, top_p, temperatura, max_tokens, tts_enabled):
+    """Selects the API call based on the global preference"""
+    print(f"[DEBUG] chat() called with prompt: {prompt}")
+    if USE_OLLAMA_API:
+        return chat_with_ollama_api(
+            prompt, top_k, top_p, temperatura, max_tokens, tts_enabled
+        )
+    else:
+        return chat_with_huggingface(
+            prompt, top_k, top_p, temperatura, max_tokens, tts_enabled
+        )
 
 
 def cleanup_model():
@@ -142,4 +232,4 @@ def cleanup_model():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    print("Model resources cleaned up")
+    print("[DEBUG] Model resources cleaned up")
