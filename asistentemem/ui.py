@@ -1,14 +1,14 @@
 import gradio as gr
 import atexit
 from asistentemem.speech import speech_to_text
-from asistentemem.model import chat_with_ollama, initialize_model, cleanup_model
+from asistentemem import model  # updated import to access the new chat wrapper
 from asistentemem.data import cargar_documento, obtener_datos_api
 
 # Global variable for TTS state
 tts_enabled = False
 
 # Register cleanup function to run when Python exits
-atexit.register(cleanup_model)
+atexit.register(model.cleanup_model)
 
 
 def update_tts_state(value):
@@ -23,9 +23,10 @@ def crear_interfaz():
     """Create the Gradio interface"""
     global tts_enabled
 
-    # Initialize the model at startup
-    print("Initializing model at application startup...")
-    initialize_model()
+    # Initialize the model at startup (if using Hugging Face)
+    if not model.USE_OLLAMA_API:
+        print("Initializing model at application startup...")
+        model.initialize_model()
 
     with gr.Blocks(
         css=""" 
@@ -101,9 +102,9 @@ def crear_interfaz():
                     )
                     max_tokens_slider = gr.Slider(
                         minimum=20,
-                        maximum=200,
-                        step=10,
-                        value=50,
+                        maximum=1000,
+                        step=20,
+                        value=300,
                         label="📏 Tokens máximos",
                     )
 
@@ -121,7 +122,7 @@ def crear_interfaz():
 
                 # Add unload model button at the bottom of sidebar
                 unload_model_btn = gr.Button("🧹 Liberar recursos del modelo")
-                unload_model_btn.click(fn=cleanup_model, inputs=[], outputs=[])
+                unload_model_btn.click(fn=model.cleanup_model, inputs=[], outputs=[])
 
         sidebar_state = gr.State(False)
 
@@ -137,9 +138,9 @@ def crear_interfaz():
         file_upload.change(cargar_documento, inputs=[file_upload], outputs=chatbot)
         api_input.change(obtener_datos_api, inputs=[api_input], outputs=chatbot)
 
-        # Update submit_btn to output both chatbot messages and an audio file (if any)
+        # Update submit_btn to use the new chat() wrapper that selects the API call
         submit_btn.click(
-            chat_with_ollama,
+            model.chat,
             inputs=[
                 prompt_input,
                 top_k_slider,
